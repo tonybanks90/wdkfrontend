@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@aptos-labs/ts-sdk": "^5.2.0",
+    "@cashlab/cauldron": "^1.0.2",
     "@hookform/resolvers": "^5.2.2",
     "@privy-io/node": "^0.7.0",
     "@privy-io/react-auth": "^3.10.0",
