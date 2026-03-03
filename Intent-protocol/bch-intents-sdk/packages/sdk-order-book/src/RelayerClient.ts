@@ -13,6 +13,20 @@ export interface RelayerConfig {
     network?: Network;
 }
 
+export interface IntentFilterParams {
+    maker?: string;
+    status?: 'pending' | 'filled' | 'cancelled' | 'expired';
+    sellToken?: string;
+    buyToken?: string;
+    limit?: number;
+    offset?: number;
+}
+
+export interface IntentQueryResponse {
+    intents: Intent[];
+    total: number;
+}
+
 const DEFAULT_MAINNET_URL = 'https://relayer.bch-intents.org';
 const DEFAULT_CHIPNET_URL = 'http://localhost:3005'; // Fallback for local testing
 
@@ -33,10 +47,26 @@ export class RelayerClient {
     }
 
     /**
-     * Fetch all intents from the relayer (active and completed).
+     * Fetch intents from the relayer.
+     * If no filters are provided, returns the legacy split of active/completed.
+     * If filters are provided, returns a paginated list of matching intents.
      */
-    async getIntents(): Promise<{ active: Intent[], completed: Intent[] }> {
-        return this.fetchJson<{ active: Intent[], completed: Intent[] }>('/intents');
+    async getIntents(): Promise<{ active: Intent[], completed: Intent[] }>;
+    async getIntents(filters: IntentFilterParams): Promise<IntentQueryResponse>;
+    async getIntents(filters?: IntentFilterParams): Promise<any> {
+        if (!filters || Object.keys(filters).length === 0) {
+            return this.fetchJson<{ active: Intent[], completed: Intent[] }>('/intents');
+        }
+
+        const params = new URLSearchParams();
+        if (filters.maker) params.append('maker', filters.maker);
+        if (filters.status) params.append('status', filters.status);
+        if (filters.sellToken) params.append('sellToken', filters.sellToken);
+        if (filters.buyToken) params.append('buyToken', filters.buyToken);
+        if (filters.limit !== undefined) params.append('limit', filters.limit.toString());
+        if (filters.offset !== undefined) params.append('offset', filters.offset.toString());
+
+        return this.fetchJson<IntentQueryResponse>(`/intents?${params.toString()}`);
     }
 
     /**
@@ -148,8 +178,8 @@ export class RelayerClient {
             if (!response.ok) {
                 let errorMsg = `HTTP ${response.status} ${response.statusText}`;
                 try {
-                    const errorData = await response.json();
-                    if (errorData.error) errorMsg += `: ${errorData.error}`;
+                    const errorData = await response.json() as any;
+                    if (errorData?.error) errorMsg += `: ${errorData.error}`;
                 } catch {
                     // Ignore non-json body
                 }
