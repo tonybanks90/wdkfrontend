@@ -1,0 +1,25 @@
+{
+  "name": "contracts-evm",
+  "version": "1.0.0",
+  "description": "Intent Protocol EVM Smart Contracts — HTLC + Dutch Auction for BSC and other EVM chains",
+  "scripts": {
+    "compile": "npx hardhat compile",
+    "test": "npx hardhat test",
+    "deploy:bsc-testnet": "npx hardhat run scripts/deploy.ts --network bscTestnet",
+    "verify": "npx hardhat verify --network bscTestnet"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@nomicfoundation/hardhat-ethers": "^3.0.0",
+    "@typechain/hardhat": "^9.0.0",
+    "hardhat": "^2.22.0",
+    "dotenv": "^16.4.0",
+    "typescript": "^5.4.0",
+    "ts-node": "^10.9.0",
+    "@types/node": "^20.0.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.0",
+    "ethers": "^6.13.0"
+  }
+}
