@@ -1,0 +1,347 @@
+import { Connection, Keypair, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL, sendAndConfirmTransaction, Ed25519Program } from '@solana/web3.js';
+import { getAssociatedTokenAddress, getOrCreateAssociatedTokenAccount, NATIVE_MINT, createSyncNativeInstruction, createCloseAccountInstruction } from '@solana/spl-token';
+import * as anchor from '@coral-xyz/anchor';
+import { Program } from '@coral-xyz/anchor';
+import { createHash } from 'crypto';
+import chalk from 'chalk';
+import { relayerConfig as config } from '../config.js';
+import idl from './intent_swap.json' with { type: 'json' };
+import WDK from '@tetherto/wdk';
+import WalletManagerSolana, { WalletAccountSolana } from '@tetherto/wdk-wallet-solana';
+
+// Minimal IDL interface
+interface IntentSwap {
+    version: "0.1.0",
+    name: "intent_swap",
+    instructions: any[]
+}
+
+/**
+ * Solana Service for cross-chain HTLC operations using Anchor
+ */
+export class SolanaService {
+    public connection: Connection;
+    public keypair!: Keypair;
+    public program!: Program<any>;
+    private provider!: anchor.AnchorProvider;
+    
+    // WDK State
+    private wdk?: WDK;
+    public wdkAccount?: WalletAccountSolana;
+    
+    // Readiness promise
+    public ready: Promise<void>;
+
+    constructor() {
+        this.connection = new Connection(config.solana.rpcUrl, 'confirmed');
+
+        // Initialize WDK with Solana Manager async
+        this.ready = this.init().catch(err => {
+            console.error(chalk.red('Failed to initialize Solana service via WDK:'), err);
+        });
+    }
+
+    private async init() {
+        console.log(chalk.cyan(`⚙️ Initializing WDK for Solana Relayer...`));
+
+        let seed: Uint8Array;
+        if (config.solana.privateKey) {
+            try {
+                // If it's a '[' array string, parse it
+                const arr = JSON.parse(config.solana.privateKey);
+                seed = Uint8Array.from(arr).slice(0, 32); // Use first 32 bytes for WDK derivation
+            } catch (e) {
+                seed = createHash('sha256').update(config.solana.privateKey).digest();
+            }
+        } else {
+            console.log(chalk.yellow('⚠️  Solana: Missing config key. Using random WDK seed.'));
+            const randomSeed = WDK.getRandomSeedPhrase();
+            seed = createHash('sha256').update(randomSeed).digest();
+        }
+
+        this.wdk = new WDK(seed);
+        this.wdk.registerWallet('solana', WalletManagerSolana, {
+            rpcUrl: config.solana.rpcUrl
+        });
+        
+        this.wdkAccount = (await this.wdk.getAccount('solana', 0)) as unknown as WalletAccountSolana;
+        
+        // Extract KeyPair from WDK to use with Anchor
+        const wdkKeys = this.wdkAccount.keyPair;
+        if (!wdkKeys.privateKey) throw new Error("WDK did not return a private key");
+        
+        let privKeyBytes = wdkKeys.privateKey as any;
+        if (typeof privKeyBytes === 'string') {
+            privKeyBytes = Buffer.from((privKeyBytes as string).replace('0x', ''), 'hex');
+        }
+        
+        if (privKeyBytes.length === 32) {
+            // Reconstruct full 64-byte Solana secret key using public key
+            const pubKeyBytes = wdkKeys.publicKey as any;
+            let pubKeyArr = typeof pubKeyBytes === 'string' ? Buffer.from((pubKeyBytes as string).replace('0x', ''), 'hex') : pubKeyBytes;
+            const fullSecret = new Uint8Array(64);
+            fullSecret.set(privKeyBytes, 0);
+            fullSecret.set(pubKeyArr as unknown as Uint8Array, 32);
+            this.keypair = Keypair.fromSecretKey(fullSecret);
+        } else {
+            this.keypair = Keypair.fromSecretKey(new Uint8Array(privKeyBytes));
+        }
+
+        // Initialize Anchor Provider
+        const wallet = new anchor.Wallet(this.keypair);
+        this.provider = new anchor.AnchorProvider(
+            this.connection,
+            wallet,
+            { preflightCommitment: 'confirmed' }
+        );
+
+        // Initialize Program
+        this.program = new anchor.Program(idl as any, this.provider);
+        console.log(chalk.magenta(`☀️ Solana Service Initialized via WDK: ${this.keypair.publicKey.toBase58()}`));
+    }
+
+    get publicKey(): PublicKey {
+        return this.keypair.publicKey;
+    }
+
+    /**
+     * Create an Escrow (HTLC) on Solana
+     * Used in BCH -> SOL flow (Relayer locks SOL for User)
+     */
+    async createEscrow(
+        recipient: PublicKey,
+        hashlock: Buffer, // 32 bytes
+        amountLamports: anchor.BN,
+        timelock: anchor.BN,
+        tokenMint: PublicKey = NATIVE_MINT
+    ): Promise<{ tx: string, escrowPda: string }> {
+        console.log(chalk.cyan(`⚡ Creating Solana Escrow for Mint: ${tokenMint.toBase58()}...`));
+
+        // Derive Escrow PDA
+        // Seeds: "escrow", maker (Relayer), hashlock
+        const [escrowPda] = PublicKey.findProgramAddressSync(
+            [
+                Buffer.from("escrow"),
+                this.keypair.publicKey.toBuffer(),
+                hashlock
+            ],
+            this.program.programId
+        );
+
+        // Derive Vault PDA
+        const [vaultPda] = PublicKey.findProgramAddressSync(
+            [
+                Buffer.from("vault"),
+                escrowPda.toBuffer()
+            ],
+            this.program.programId
+        );
+
+        // Relayer's Token account (source of funds)
+        const makerTokenAccount = await getAssociatedTokenAddress(tokenMint, this.keypair.publicKey);
+
+        // Ensure Relayer's Token account exists
+        await getOrCreateAssociatedTokenAccount(
+            this.connection,
+            this.keypair,
+            tokenMint,
+            this.keypair.publicKey
+        );
+
+        // Prepare Wrapping Instructions ONLY if Native Mint
+        const preIxs = [];
+        if (tokenMint.equals(NATIVE_MINT)) {
+            preIxs.push(
+                SystemProgram.transfer({
+                    fromPubkey: this.keypair.publicKey,
+                    toPubkey: makerTokenAccount,
+                    lamports: BigInt(amountLamports.toString())
+                })
+            );
+            preIxs.push(createSyncNativeInstruction(makerTokenAccount));
+        }
+
+        try {
+            const program: any = this.program;
+            const tx = await program.methods
+                .initialize(
+                    [...hashlock],
+                    timelock,
+                    amountLamports
+                )
+                .preInstructions(preIxs)
+                .accounts({
+                    maker: this.keypair.publicKey,
+                    taker: recipient, // User is taker
+                    tokenMint: tokenMint,
+                    escrow: escrowPda,
+                    makerTokenAccount: makerTokenAccount,
+                    vault: vaultPda,
+                    systemProgram: SystemProgram.programId,
+                    tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+                    rent: anchor.web3.SYSVAR_RENT_PUBKEY
+                })
+                .rpc();
+
+            console.log(chalk.green(`✅ Solana Escrow Created: ${tx}`));
+            return { tx, escrowPda: escrowPda.toBase58() };
+        } catch (e: any) {
+            console.error(chalk.red("Failed to create escrow:"), e);
+            throw e;
+        }
+    }
+
+    /**
+     * Claim an Escrow on Solana
+     * Used in SOL -> BCH flow (Relayer claims SOL using secret)
+     */
+    async claimEscrow(
+        maker: PublicKey,       // User (who created the escrow)
+        hashlock: Buffer,
+        secret: Buffer,
+        escrowPda?: PublicKey,   // Optional, derived if not provided
+        tokenMint: PublicKey = NATIVE_MINT,
+        taker?: PublicKey        // The intended recipient (defaults to relayer)
+    ): Promise<string> {
+        console.log(chalk.cyan(`⚡ Claiming Solana Escrow for Mint: ${tokenMint.toBase58()}...`));
+
+        // Derive if missing
+        if (!escrowPda) {
+            [escrowPda] = PublicKey.findProgramAddressSync(
+                [
+                    Buffer.from("escrow"),
+                    maker.toBuffer(),
+                    hashlock
+                ],
+                this.program.programId
+            );
+        }
+
+        const [vaultPda] = PublicKey.findProgramAddressSync(
+            [Buffer.from("vault"), escrowPda.toBuffer()],
+            this.program.programId
+        );
+
+        const actualTaker = taker || this.keypair.publicKey;
+
+        // Relayer/User is Taker (recipient of tokens)
+        const takerTokenAccount = await getAssociatedTokenAddress(tokenMint, actualTaker);
+
+        // Ensure Taker (Recipient) has Token account (fee paid by relayer)
+        await getOrCreateAssociatedTokenAccount(
+            this.connection,
+            this.keypair, // Payer
+            tokenMint,
+            actualTaker,  // Owner
+            true          // allowOwnerOffCurve
+        );
+
+        // Provide Post Instructions ONLY if Native Mint
+        const postIxs = [];
+        if (tokenMint.equals(NATIVE_MINT)) {
+            postIxs.push(createCloseAccountInstruction(
+                takerTokenAccount,  // Close this WSOL account
+                actualTaker,        // Send rent/funds to Taker wallet
+                actualTaker         // Owner
+            ));
+        }
+
+        try {
+            const program: any = this.program;
+            const builder = program.methods
+                .claim([...secret])
+                .accounts({
+                    taker: actualTaker,
+                    escrow: escrowPda,
+                    vault: vaultPda,
+                    takerTokenAccount: takerTokenAccount,
+                    tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID
+                });
+
+            if (postIxs.length > 0) {
+                builder.postInstructions(postIxs);
+            }
+
+            const tx = await builder.rpc();
+
+            console.log(chalk.green(`✅ Solana Escrow Claimed: ${tx}`));
+            return tx;
+        } catch (e: any) {
+            console.error(chalk.red("Failed to claim escrow:"), e);
+            throw e;
+        }
+    }
+
+    /**
+     * Watch an Escrow for 'Claim' event (User reveals secret)
+     * Used in BCH -> SOL flow
+     */
+    async watchForSecret(escrowPda: PublicKey): Promise<string | null> {
+        // Polling approach for hackathon simplicity
+        // In production, use websocket subscription or account change listener
+
+        try {
+            const account = await (this.program.account as any).escrowState.fetchNullable(escrowPda);
+            if (!account) return null; // Escrow closed (claimed or refunded)
+
+            // If closed/null, we have to check transaction history to find the secret!
+            // fetching the account only tells us if it's open.
+            // If it's closed, we missed it?
+
+            // Strategy:
+            // 1. Check if account exists. If yes, it's not claimed yet.
+            // 2. If no, fetch signatures for the PDA address.
+            // 3. Parse transactions to find 'claim' instruction and extract secret.
+
+            // Check past transactions
+            const signatures = await this.connection.getSignaturesForAddress(escrowPda, { limit: 5 });
+
+            for (const sigInfo of signatures) {
+                if (sigInfo.err) continue;
+
+                const tx = await this.connection.getParsedTransaction(sigInfo.signature, { maxSupportedTransactionVersion: 0 });
+                if (!tx) continue;
+
+                // Look for 'claim' instruction data or logs
+                // Anchor instructions are hard to parse without IDL coder
+                // But we can check logs for "Program log: Instruction: Claim"
+                // And input data.
+
+                // Better: Anchor event check?
+                // `EscrowClaimedEvent` is implemented? Let's assume no event for now based on `lib.rs`.
+                // Wait, `lib.rs` doesn't emit events in the version I read.
+
+                // Fallback: Parse input data of the instruction.
+                // Claim instruction has `secret: [u8; 32]`.
+                // We need to find the instruction targeting the program.
+
+                for (const ix of tx.transaction.message.instructions) {
+                    if (ix.programId.toBase58() === this.program.programId.toBase58()) {
+                        // This is our program.
+                        // Check data. Discriminator (8 bytes) + Secret (32 bytes).
+                        // We can decode using anchor coder.
+
+                        // Hack: Decode manually or try-catch.
+                        try {
+                            const ixData = (ix as any).data; // base58 string 
+                            const ixBuf = Buffer.from(anchor.utils.bytes.bs58.decode(ixData));
+
+                            // "claim" discriminator is SHA256("global:claim")[0..8] -> 3ec6d6c1d59f6cd2
+                            const claimDiscriminator = Buffer.from('3ec6d6c1d59f6cd2', 'hex');
+
+                            if (ixBuf.length >= 40 && ixBuf.slice(0, 8).equals(claimDiscriminator)) { // 8 disc + 32 secret
+                                const secretCandidate = ixBuf.slice(8, 40);
+                                return secretCandidate.toString('hex');
+                            }
+                        } catch (e) {
+                            // Ignore decoding errors for other instructions
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.log("Error watching/parsing Solana:", e);
+        }
+        return null; // Not found yet
+    }
+}
