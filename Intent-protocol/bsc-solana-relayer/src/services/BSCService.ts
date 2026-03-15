@@ -14,6 +14,11 @@ const HTLC_ABI = [
     "event EscrowClaimed(uint256 indexed escrowId, address indexed claimer, bytes32 secret, uint256 amount)"
 ];
 
+const ERC20_ABI = [
+    "function approve(address spender, uint256 amount) public returns (bool)",
+    "function allowance(address owner, address spender) public view returns (uint256)"
+];
+
 export class BSCService {
     public provider: ethers.JsonRpcProvider;
     public contractInterface: ethers.Interface;
@@ -92,6 +97,27 @@ export class BSCService {
         const hashBuf = hashlock.startsWith('0x') ? hashlock : `0x${hashlock}`;
         
         try {
+            // Check & Approve ERC-20 Token natively
+            if (tokenAddress !== ethers.ZeroAddress) {
+                const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, this.provider);
+                const currentAllowance = await tokenContract.allowance(this.walletAddress, relayerConfig.bsc.htlcAddress);
+                
+                if (BigInt(currentAllowance) < BigInt(amountWei)) {
+                    console.log(chalk.yellow(`   Approving ${amountWei} tokens for IntentHTLC spending via WDK...`));
+                    const iface = new ethers.Interface(ERC20_ABI);
+                    const authCallData = iface.encodeFunctionData("approve", [relayerConfig.bsc.htlcAddress, amountWei]);
+                    
+                    const authTx = await this.wdkAccount.sendTransaction({
+                        to: tokenAddress,
+                        value: 0n,
+                        data: authCallData
+                    });
+                    
+                    await this.provider.waitForTransaction(authTx.hash);
+                    console.log(chalk.green(`   ✅ Token Approved: ${authTx.hash}`));
+                }
+            }
+
             // Encode the ABI call data
             const callData = this.contractInterface.encodeFunctionData("createEscrow", [
                 hashBuf,

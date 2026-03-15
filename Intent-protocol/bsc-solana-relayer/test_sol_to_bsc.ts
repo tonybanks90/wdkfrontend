@@ -33,19 +33,21 @@ async function runE2E() {
     console.log(`Secret (Hex): 0x${secret.toString('hex')}`);
     console.log(`Hashlock (Hex): 0x${hashlock.toString('hex')}`);
 
-    //Amounts
-    const sellAmountSol = 10_000_000; // 0.01 SOL
-    const buyAmountBsc = ethers.parseEther("0.01").toString(); // 0.01 BNB
+    // Amounts
+    const sellAmountUSDC = 10_000; // 0.01 USDC (6 decimals)
+    const buyAmountUSDT = ethers.parseUnits("0.01", 6).toString(); // Mock USDT uses 6 decimals(18 decimals)
 
     // 2. User Creates Escrow on Solana Devnet
     console.log("\n[User] Creating Escrow on Solana Devnet...");
     const relayerSolanaPubkey = solanaService.publicKey || solanaService.keypair?.publicKey;
+    const devnetUsdcMint = new PublicKey("5Rya94T4npZ5vb938buez4HiiTa99wPt4sBPs6oqfuc5"); 
+    
     const solanaResult = await solanaService.createEscrow(
-        relayerSolanaPubkey!, // The relayer claims the SOL
+        relayerSolanaPubkey!, // The relayer claims the USDC
         hashlock,
-        new BN(sellAmountSol),
+        new BN(sellAmountUSDC),
         new BN(Math.floor(Date.now() / 1000) + relayerConfig.timelocks.source),
-        NATIVE_MINT
+        devnetUsdcMint
     );
     console.log(`✅ Solana Escrow Created: ${solanaResult.escrowPda}`);
     
@@ -57,8 +59,8 @@ async function runE2E() {
         body: JSON.stringify({
             makerAddress: solanaService.publicKey?.toBase58() || solanaService.keypair?.publicKey.toBase58(),
             recipientAddress: userBscWallet.address,
-            sellAmount: sellAmountSol.toString(),
-            buyAmount: buyAmountBsc,
+            sellAmount: sellAmountUSDC.toString(),
+            buyAmount: buyAmountUSDT,
             hashlock: "0x" + hashlock.toString('hex'),
             solanaEscrowPda: solanaResult.escrowPda,
         })

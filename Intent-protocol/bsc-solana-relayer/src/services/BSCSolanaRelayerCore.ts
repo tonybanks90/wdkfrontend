@@ -135,15 +135,18 @@ export class BSCSolanaRelayerCore {
 
         // 2. SOURCE_LOCKED -> DEST_FILLED (Relayer fills Solana)
         if (intent.status === 'SOURCE_LOCKED' && !intent.destFillTx) {
-            console.log(chalk.cyan(`⚡ Filling on Solana (Destination)...`));
+            console.log(chalk.cyan(`⚡ Filling on Solana (Destination) natively using SPL USDC...`));
             try {
                 const hashBuf = Buffer.from(intent.hashlock.replace('0x', ''), 'hex');
+                // Use Standard Devnet USDC rather than NATIVE_MINT
+                const devnetUsdcMint = new PublicKey("5Rya94T4npZ5vb938buez4HiiTa99wPt4sBPs6oqfuc5"); 
+                
                 const result = await this.solanaService.createEscrow(
                     new PublicKey(intent.recipientAddress),
                     hashBuf,
                     new BN(intent.buyAmount),
                     new BN(intent.destTimelock),
-                    NATIVE_MINT
+                    devnetUsdcMint
                 );
 
                 intent.destFillTx = result.tx;
@@ -194,14 +197,15 @@ export class BSCSolanaRelayerCore {
 
         // 2. SOURCE_LOCKED -> DEST_FILLED (Relayer fills BSC)
         if (intent.status === 'SOURCE_LOCKED' && !intent.destFillTx) {
-            console.log(chalk.cyan(`⚡ Filling on BSC (Destination)...`));
+            console.log(chalk.cyan(`⚡ Filling on BSC (Destination) natively using ERC-20 Tether...`));
             try {
+                const mockUsdtAddress = process.env.MOCK_USDT_ADDRESS || "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"; // Dummy fallback
                 const result = await this.bscService.createEscrow(
                     intent.hashlock,
                     intent.recipientAddress,
                     intent.buyAmount,
                     relayerConfig.timelocks.dest,
-                    ethers.ZeroAddress
+                    mockUsdtAddress
                 );
 
                 intent.destFillTx = result.txHash;
