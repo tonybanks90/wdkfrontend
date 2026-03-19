@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { useTheme } from '../../providers/ThemeProvider';
-import { Sun, Moon, Zap, Wallet } from 'lucide-react';
+import { ConnectWalletButton } from '../wallet/ConnectWalletButton';
+import { Sun, Moon, Zap } from 'lucide-react';
 
 export function FloatingHeader() {
   const { theme, toggleTheme } = useTheme();
@@ -51,11 +52,8 @@ export function FloatingHeader() {
             {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           </button>
 
-          {/* Connect Wallet Button (placeholder — will be wired to WDK) */}
-          <button className="btn-gradient" style={{ padding: '10px 20px', fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Wallet size={16} />
-            Connect Wallet
-          </button>
+          {/* WDK Wallet Connect Button */}
+          <ConnectWalletButton />
         </div>
       </div>
     </header>
