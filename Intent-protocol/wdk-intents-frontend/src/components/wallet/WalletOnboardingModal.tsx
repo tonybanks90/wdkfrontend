@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useWDK } from '../../providers/WDKProvider';
-import { KeyRound, Plus, Download, Eye, EyeOff, Lock, Loader2, Copy, Check, AlertTriangle } from 'lucide-react';
+import { KeyRound, Plus, Download, EyeOff, Lock, Loader2, Copy, Check, AlertTriangle } from 'lucide-react';
 
 type Step = 'choose' | 'create-show' | 'create-password' | 'import' | 'unlock';
 

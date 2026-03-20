@@ -14,7 +14,9 @@
  */
 
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
-import { encryptAndStore, decryptFromStorage, hasStoredWallet, clearStoredWallet } from '../lib/crypto';
+import { encryptAndStore, decryptFromStorage, hasStoredWallet } from '../lib/crypto';
+import WalletManagerSolana from '@tetherto/wdk-wallet-solana';
+import { createKeyPairSignerFromPrivateKeyBytes } from '@solana/signers';
 
 interface WDKWalletState {
   isInitialized: boolean;
@@ -22,6 +24,10 @@ interface WDKWalletState {
   seedPhrase: string | null;
   evmAddress: string | null;
   solanaAddress: string | null;
+  evmSigner: any | null;      // ethers.HDNodeWallet
+  solanaSigner: any | null;   // @solana/signers KeyPairSigner (with secretKey)
+  solanaAccount: any | null;  // WalletAccountSolana — has sign(), transfer(), sendTransaction()
+  solanaManager: any | null;  // WalletManagerSolana — has getFeeRates(), dispose()
   evmBalance: string | null;
   solanaBalance: string | null;
   error: string | null;
@@ -63,83 +69,80 @@ async function generateSeedPhrase(): Promise<string> {
 }
 
 /**
- * Derive EVM address from seed phrase using ethers (BIP-44 m/44'/60'/0'/0/0)
+ * Derive EVM wallet from seed phrase using ethers (BIP-44 m/44'/60'/0'/0/0)
  */
-async function deriveEvmAddress(seedPhrase: string): Promise<string | null> {
+async function deriveEvmWallet(seedPhrase: string): Promise<any | null> {
   try {
     const { HDNodeWallet } = await import('ethers');
     const wallet = HDNodeWallet.fromPhrase(seedPhrase, undefined, "m/44'/60'/0'/0/0");
     console.log('[WDK] ✅ EVM address:', wallet.address);
-    return wallet.address;
+    return wallet;
   } catch (e: any) {
     console.warn('[WDK] EVM derivation failed:', e.message);
     return null;
   }
 }
 
+
+
 /**
- * Derive Solana address from seed phrase using the same libs WDK uses internally:
- * - bip39: mnemonicToSeedSync → 64-byte seed
- * - micro-key-producer/slip10: SLIP-10 Ed25519 HD key derivation
- * - @solana/signers: createKeyPairSignerFromPrivateKeyBytes → base58 address
- * 
- * Path: m/44'/501'/0'/0' (same as WDK wallet-solana v1.0.0-beta.4+)
+ * Derive Solana signer from seed phrase using @tetherto/wdk-wallet-solana
+ * Per official docs: https://docs.wdk.tether.io/sdk/wallet-modules
  */
-async function deriveSolanaAddress(seedPhrase: string): Promise<string | null> {
+async function deriveSolanaSigner(seedPhrase: string): Promise<{signer: any, account: any, manager: any} | null> {
   try {
-    // Use bip39 to convert mnemonic → 64-byte seed (same as WDK)
-    const bip39 = await import('bip39');
-    const seed = bip39.mnemonicToSeedSync(seedPhrase);
+    // Initialize WDK Solana Wallet Manager with config (per official docs)
+    const manager = new WalletManagerSolana(seedPhrase, {
+      rpcUrl: 'https://api.devnet.solana.com',
+      commitment: 'confirmed',
+    });
+    const account = await manager.getAccount(0);
+    const address = await account.getAddress();
     
-    // Use SLIP-10 HD key derivation (same as WDK wallet-solana)
-    const { default: HDKey } = await import('micro-key-producer/slip10.js');
-    const hdKey = HDKey.fromMasterSeed(seed);
-    const derived = hdKey.derive("m/44'/501'/0'/0'", true);
-    const privateKey = derived.privateKey;
+    // The Ed25519 private key is a 32-byte Uint8Array
+    const privateKey = account.keyPair.privateKey;
+    if (!privateKey) throw new Error("No private key derived");
+    
+    // Create modern signer from @solana/signers
+    const baseSigner = await createKeyPairSignerFromPrivateKeyBytes(privateKey);
+    console.log('[WDK] ✅ Solana address (via wdk-wallet-solana):', address);
+    
+    // Build raw 64-byte secretKey for legacy @solana/web3.js / Anchor compatibility
+    const secretKey64 = new Uint8Array(64);
+    secretKey64.set(privateKey, 0);
+    secretKey64.set(account.keyPair.publicKey, 32);
 
-    // Use @solana/signers to get the address (same as WDK)
-    const { createKeyPairSignerFromPrivateKeyBytes } = await import('@solana/signers');
-    const signer = await createKeyPairSignerFromPrivateKeyBytes(privateKey);
-    
-    console.log('[WDK] ✅ Solana address:', signer.address);
-    return signer.address;
-  } catch (e: any) {
-    console.warn('[WDK] Solana derivation via SLIP-10 failed:', e.message);
-  }
+    // IMPORTANT: baseSigner is a FROZEN object from @solana/signers.
+    // We must wrap it in a new mutable object instead of mutating it.
+    const signer = {
+      ...baseSigner,
+      address,
+      secretKey: secretKey64,
+    };
 
-  // Fallback: try ed25519-hd-key + tweetnacl  
-  try {
-    const { derivePath, getMasterKeyFromSeed } = await import('ed25519-hd-key');
-    const bip39 = await import('bip39');
-    const seed = bip39.mnemonicToSeedSync(seedPhrase);
-    const { key } = derivePath("m/44'/501'/0'/0'", Buffer.from(seed).toString('hex'));
-    
-    // Convert to base58 public key
-    const nacl = await import('tweetnacl');
-    const keyPair = nacl.sign.keyPair.fromSeed(key);
-    
-    // Base58 encode the public key
-    const bs58 = await import('bs58');
-    const address = bs58.default.encode(keyPair.publicKey);
-    
-    console.log('[WDK] ✅ Solana address (via ed25519-hd-key):', address);
-    return address;
+    return { signer, account, manager };
   } catch (e: any) {
-    console.warn('[WDK] Solana ed25519-hd-key fallback failed:', e.message);
+    console.warn('[WDK] Solana wdk-wallet derivation failed:', e.message);
+    return null;
   }
-  
-  return null;
 }
 
 /**
- * Initialize wallet: derive addresses for both chains
+ * Initialize wallet: derive signers for both chains
  */
 async function initializeWallet(seedPhrase: string) {
-  const [evmAddress, solanaAddress] = await Promise.all([
-    deriveEvmAddress(seedPhrase),
-    deriveSolanaAddress(seedPhrase),
+  const [evmSigner, solanaResult] = await Promise.all([
+    deriveEvmWallet(seedPhrase),
+    deriveSolanaSigner(seedPhrase),
   ]);
-  return { evmAddress, solanaAddress };
+  return { 
+    evmSigner, 
+    solanaSigner: solanaResult?.signer || null,
+    solanaAccount: solanaResult?.account || null,
+    solanaManager: solanaResult?.manager || null,
+    evmAddress: evmSigner?.address || null,
+    solanaAddress: solanaResult?.signer?.address || null
+  };
 }
 
 export function WDKProvider({ children }: { children: ReactNode }) {
@@ -149,6 +152,10 @@ export function WDKProvider({ children }: { children: ReactNode }) {
     seedPhrase: null,
     evmAddress: null,
     solanaAddress: null,
+    evmSigner: null,
+    solanaSigner: null,
+    solanaAccount: null,
+    solanaManager: null,
     evmBalance: null,
     solanaBalance: null,
     error: null,
@@ -158,7 +165,7 @@ export function WDKProvider({ children }: { children: ReactNode }) {
     setState(s => ({ ...s, isLoading: true, error: null }));
     try {
       const phrase = await generateSeedPhrase();
-      const { evmAddress, solanaAddress } = await initializeWallet(phrase);
+      const { evmAddress, solanaAddress, evmSigner, solanaSigner, solanaAccount, solanaManager } = await initializeWallet(phrase);
 
       setState(s => ({
         ...s,
@@ -167,6 +174,10 @@ export function WDKProvider({ children }: { children: ReactNode }) {
         seedPhrase: phrase,
         evmAddress,
         solanaAddress,
+        evmSigner,
+        solanaSigner,
+        solanaAccount,
+        solanaManager,
       }));
 
       return phrase;
@@ -186,7 +197,7 @@ export function WDKProvider({ children }: { children: ReactNode }) {
         throw new Error('Seed phrase must be 12 or 24 words');
       }
 
-      const { evmAddress, solanaAddress } = await initializeWallet(trimmed);
+      const { evmAddress, solanaAddress, evmSigner, solanaSigner, solanaAccount, solanaManager } = await initializeWallet(trimmed);
 
       setState(s => ({
         ...s,
@@ -195,6 +206,10 @@ export function WDKProvider({ children }: { children: ReactNode }) {
         seedPhrase: trimmed,
         evmAddress,
         solanaAddress,
+        evmSigner,
+        solanaSigner,
+        solanaAccount,
+        solanaManager,
       }));
     } catch (error: any) {
       console.error('[WDK] importWallet error:', error);
@@ -212,7 +227,7 @@ export function WDKProvider({ children }: { children: ReactNode }) {
         return false;
       }
 
-      const { evmAddress, solanaAddress } = await initializeWallet(phrase);
+      const { evmAddress, solanaAddress, evmSigner, solanaSigner, solanaAccount, solanaManager } = await initializeWallet(phrase);
 
       setState(s => ({
         ...s,
@@ -221,6 +236,10 @@ export function WDKProvider({ children }: { children: ReactNode }) {
         seedPhrase: phrase,
         evmAddress,
         solanaAddress,
+        evmSigner,
+        solanaSigner,
+        solanaAccount,
+        solanaManager,
       }));
       return true;
     } catch (error: any) {
@@ -236,17 +255,24 @@ export function WDKProvider({ children }: { children: ReactNode }) {
   }, [state.seedPhrase]);
 
   const disconnect = useCallback(() => {
+    // Per WDK docs: dispose() clears private keys from memory
+    try { state.solanaAccount?.dispose?.(); } catch {}
+    try { state.solanaManager?.dispose?.(); } catch {}
     setState({
       isInitialized: false,
       isLoading: false,
       seedPhrase: null,
       evmAddress: null,
       solanaAddress: null,
+      evmSigner: null,
+      solanaSigner: null,
+      solanaAccount: null,
+      solanaManager: null,
       evmBalance: null,
       solanaBalance: null,
       error: null,
     });
-  }, []);
+  }, [state.solanaAccount, state.solanaManager]);
 
   const refreshBalances = useCallback(async () => {
     // Balances will be fetched via RPC in a later phase

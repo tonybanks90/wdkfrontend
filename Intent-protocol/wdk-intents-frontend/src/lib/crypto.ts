@@ -18,7 +18,7 @@ async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
   );
 
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: salt as BufferSource, iterations: 100000, hash: 'SHA-256' },
     keyMaterial,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -26,7 +26,10 @@ async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
   );
 }
 
-function bufferToBase64(buffer: ArrayBuffer): string {
+function bufferToBase64(buffer: ArrayBuffer | Uint8Array): string {
+  if (buffer instanceof Uint8Array) {
+    return btoa(String.fromCharCode(...buffer));
+  }
   return btoa(String.fromCharCode(...new Uint8Array(buffer)));
 }
 
@@ -71,9 +74,9 @@ export async function decryptFromStorage(password: string): Promise<string | nul
     const key = await deriveKey(password, base64ToBuffer(salt));
 
     const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: base64ToBuffer(iv) },
+      { name: 'AES-GCM', iv: base64ToBuffer(iv) as BufferSource },
       key,
-      base64ToBuffer(data)
+      base64ToBuffer(data) as BufferSource
     );
 
     return new TextDecoder().decode(decrypted);
