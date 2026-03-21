@@ -15,7 +15,7 @@ export const TOKENS: Token[] = [
   
   // BSC Tokens
   { id: 'bsc-bnb', symbol: 'BNB', name: 'BNB', icon: '⬡', decimals: 18, chainId: 'bsc', address: 'native' },
-  { id: 'bsc-usdt', symbol: 'USDT', name: 'Tether USD', icon: '₮', decimals: 18, chainId: 'bsc', address: '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd' }, // Testnet USDT
+  { id: 'bsc-usdt', symbol: 'USDT', name: 'Tether USD', icon: '₮', decimals: 18, chainId: 'bsc', address: '0x5FbDB2315678afecb367f032d93F642f64180aa3' }, // Local Mock USDT
 ];
 
 export const getTokensForChain = (chainId: string) => TOKENS.filter(t => t.chainId === chainId);
