@@ -181,7 +181,7 @@ export default function AgentsDashboard() {
             {/* Scenario 2: DeFi Trading */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ alignSelf: 'flex-end', background: 'var(--color-primary-light)', color: '#000', padding: '16px 20px', borderRadius: '20px 20px 0 20px', maxWidth: '85%', fontWeight: 500, fontSize: '15px', boxShadow: '0 4px 15px rgba(0, 201, 167, 0.2)' }}>
-                "Start a yield monitoring sweep. If the SOL/USDT market spread between the BSC Liquidity Pool and Solana hits > 2.5%, lock an arbitrage swap."
+                "Start a yield monitoring sweep. If the SOL/USDT market spread between the BSC Liquidity Pool and Solana hits &gt; 2.5%, lock an arbitrage swap."
               </div>
               
               <div style={{ alignSelf: 'flex-start', background: '#12121A', border: '1px solid var(--color-border)', padding: '20px', borderRadius: '20px 20px 20px 0', maxWidth: '90%', display: 'flex', flexDirection: 'column', gap: '16px', boxShadow: '0 10px 25px rgba(0,0,0,0.4)' }}>
