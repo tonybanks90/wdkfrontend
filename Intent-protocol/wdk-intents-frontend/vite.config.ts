@@ -24,10 +24,7 @@ export default defineConfig({
     },
   },
   build: {
-    rollupOptions: {
-      // Ensure Rolldown doesn't error on optional native modules
-      external: ['sodium-native'],
-    },
+    rollupOptions: {},
   },
   server: {
     port: 5174,
