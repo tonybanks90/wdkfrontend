@@ -3,7 +3,7 @@ import { ethers } from "hardhat";
 async function main() {
   const [deployer] = await ethers.getSigners();
   console.log("Deploying IntentHTLC with account:", deployer.address);
-  console.log("Balance:", ethers.formatEther(await ethers.provider.getBalance(deployer.address)), "BNB");
+  console.log("Balance:", ethers.formatEther(await ethers.provider.getBalance(deployer.address)), "Native Token (ETH/BNB)");
 
   // Deploy MockERC20 (USDT)
   const MockERC20 = await ethers.getContractFactory("MockERC20");
