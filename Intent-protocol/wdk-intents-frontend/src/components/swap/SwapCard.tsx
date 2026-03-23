@@ -30,7 +30,7 @@ export function SwapCard() {
   const [lastTxHash, setLastTxHash] = useState<string | null>(null);
 
   // Dynamic Pricing State
-  const [prices, setPrices] = useState<Record<string, number>>({ SOL: 0, BNB: 0, USDC: 1, USDT: 1 });
+  const [prices, setPrices] = useState<Record<string, number>>({ SOL: 0, BNB: 0, ETH: 0, WETH: 0, USDC: 1, USDT: 1 });
   const [isFetchingPrice, setIsFetchingPrice] = useState(false);
 
   // Fetch prices on mount
@@ -39,7 +39,7 @@ export function SwapCard() {
     const fetchMarketPrices = async () => {
       setIsFetchingPrice(true);
       try {
-        const [solRes, bnbRes] = await Promise.allSettled([
+        const [solRes, bnbRes, ethRes] = await Promise.allSettled([
           fetch('/api/bitfinex/v2/calc/fx', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -50,11 +50,19 @@ export function SwapCard() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ccy1: 'BNB', ccy2: 'USD' }),
           }).then(r => r.json()),
+          fetch('/api/bitfinex/v2/calc/fx', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ccy1: 'ETH', ccy2: 'USD' }),
+          }).then(r => r.json()),
         ]);
         if (mounted) {
+          const ethPrice = ethRes.status === 'fulfilled' && Array.isArray(ethRes.value) ? ethRes.value[0] : 0;
           setPrices({
             SOL: solRes.status === 'fulfilled' && Array.isArray(solRes.value) ? solRes.value[0] : 0,
             BNB: bnbRes.status === 'fulfilled' && Array.isArray(bnbRes.value) ? bnbRes.value[0] : 0,
+            ETH: ethPrice,
+            WETH: ethPrice,
             USDC: 1,
             USDT: 1
           });

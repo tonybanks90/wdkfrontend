@@ -27,6 +27,15 @@ export const SUPPORTED_CHAINS: Record<string, Chain> = {
     rpcUrl: 'https://data-seed-prebsc-1-s1.binance.org:8545/',
     explorerUrl: 'https://testnet.bscscan.com'
   },
+  ethereum: {
+    id: 'ethereum',
+    name: 'Ethereum',
+    symbol: 'ETH',
+    icon: '⟠',
+    color: '#627EEA',
+    rpcUrl: 'https://ethereum-rpc.publicnode.com',
+    explorerUrl: 'https://etherscan.io'
+  },
 };
 
 export const CHAINS_LIST = Object.values(SUPPORTED_CHAINS);
