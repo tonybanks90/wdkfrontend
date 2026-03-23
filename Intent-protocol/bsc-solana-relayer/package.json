@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "tsx src/index.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",
@@ -20,9 +20,7 @@
     "chalk": "^5.3.0",
     "dotenv": "^17.3.1",
     "ethers": "^6.13.0",
-    "fastify": "^5.2.0"
-  },
-  "devDependencies": {
+    "fastify": "^5.2.0",
     "@types/node": "^20.19.37",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
