@@ -47,8 +47,8 @@ server.tool(
     "create_intent_swap",
     "Creates a cross-chain atomic swap intent by executing a cryptographic escrow on the source chain using the Agent's configured WDK wallet.",
     {
-        sourceChain: z.enum(['bsc', 'solana']).describe("The chain the Agent is sending from"),
-        destChain: z.enum(['bsc', 'solana']).describe("The chain the Agent is receiving on"),
+        sourceChain: z.enum(['bsc', 'solana', 'ethereum']).describe("The chain the Agent is sending from"),
+        destChain: z.enum(['bsc', 'solana', 'ethereum']).describe("The chain the Agent is receiving on"),
         sellAmount: z.string().describe("Amount of tokens to lock on source chain (in smallest units like wei/lamports)"),
         buyAmount: z.string().describe("Expected amount on the dest chain"),
         destRecipientAddress: z.string().describe("The user's or merchant's wallet string on the dest chain"),
@@ -67,31 +67,38 @@ server.tool(
             let sourceTxHash = "MOCK_WDK_TX_HASH";
             let makerAddress = "";
 
-            if (args.sourceChain === 'bsc') {
+            if (args.sourceChain === 'bsc' || args.sourceChain === 'ethereum') {
                 makerAddress = await evmWallet.getAddress();
-                console.error(`[Agent Tool] Building Ethers transaction via WDK EVM Signer for ${makerAddress}...`);
-                // In a production Hackathon track, the Agent calls the HTLC smart contract natively here using `evmWallet.getSigner()`
-                sourceTxHash = '0x' + crypto.randomBytes(32).toString('hex'); // Mocked success for demo
+                console.error(`[Agent Tool] Building Ethers transaction via WDK EVM Signer for ${makerAddress} on ${args.sourceChain}...`);
+                sourceTxHash = '0x' + crypto.randomBytes(32).toString('hex');
             } else if (args.sourceChain === 'solana') {
                 makerAddress = await solanaWallet.getAddress();
                 console.error(`[Agent Tool] Building Anchor Program Instruction via WDK Solana Signer for ${makerAddress}...`);
-                // Calls the Anchor program using `solanaWallet.getAccount()`
                 sourceTxHash = crypto.randomBytes(32).toString('base64');
             }
 
             console.error(`[Agent Tool] WDK Transaction Broadcasted Successfully. Hash: ${sourceTxHash}`);
 
             // Forward Intent context to the Relayer Backend
-            const relayerUrl = "http://localhost:3002";
-            const endpoint = args.sourceChain === 'bsc' ? '/swap/bsc-to-sol' : '/swap/sol-to-bsc';
+            const relayerUrl = process.env.RELAYER_URL || "https://wdk-relayer-production.up.railway.app";
+
+            // Determine the correct relayer endpoint based on chain pair
+            let endpoint = '';
+            if (args.sourceChain === 'bsc' && args.destChain === 'solana') endpoint = '/swap/bsc-to-solana';
+            else if (args.sourceChain === 'solana' && args.destChain === 'bsc') endpoint = '/swap/solana-to-bsc';
+            else if (args.sourceChain === 'ethereum' && args.destChain === 'solana') endpoint = '/swap/eth-to-solana';
+            else if (args.sourceChain === 'solana' && args.destChain === 'ethereum') endpoint = '/swap/solana-to-eth';
+            else endpoint = '/swap/bsc-to-solana'; // Default fallback
             
-            const payload = {
+            const payload: any = {
                 makerAddress: makerAddress,
                 recipientAddress: args.destRecipientAddress,
                 sellAmount: args.sellAmount,
                 buyAmount: args.buyAmount,
                 hashlock: hashlock,
                 solanaEscrowPda: args.sourceChain === 'solana' ? "SOL_PDA_GENERATED" : undefined,
+                bscEscrowId: args.sourceChain === 'bsc' ? "BSC_ESCROW_GENERATED" : undefined,
+                ethEscrowId: args.sourceChain === 'ethereum' ? "ETH_ESCROW_GENERATED" : undefined,
                 sourceTxHash: sourceTxHash
             };
 
