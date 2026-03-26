@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { ArrowDownUp, Zap, Info, Loader2, CheckCircle2 } from 'lucide-react';
 import { TokenSelector } from './TokenSelector';
 import { CHAINS_LIST } from '../../lib/chains';
-import { TOKENS, getTokensForChain } from '../../lib/tokens';
+import { getTokensForChain } from '../../lib/tokens';
 import type { Token } from '../../lib/tokens';
 import { useWDK } from '../../providers/WDKProvider';
 import { RelayerAPI } from '../../lib/api';
@@ -49,7 +49,7 @@ export function SwapCard() {
       setIsFetchingBalance(true);
       try {
         if (fromChain.id === 'solana' && wdk.solanaAddress) {
-          const connection = new Connection(fromChain.rpcUrl, 'confirmed');
+          const connection = new Connection(fromChain.rpcUrl || 'https://api.devnet.solana.com', 'confirmed');
           const pubkey = new PublicKey(wdk.solanaAddress);
           
           if (fromToken.address === 'native') {
