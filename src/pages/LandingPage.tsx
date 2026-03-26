@@ -3,6 +3,7 @@ import { Zap, Shield, Clock, ArrowRight, Layers } from 'lucide-react';
 
 const CHAINS = [
   { name: 'Solana', color: '#9945FF', icon: '/logos/solana.svg' },
+  { name: 'Ethereum', color: '#627EEA', icon: '/logos/ethereum-eth-logo.svg' },
   { name: 'BNB Chain', color: '#F0B90B', icon: '/logos/bnb-bnb-logo.svg' },
   { name: 'Bitcoin Cash', color: '#0AC18E', icon: '/logos/bitcoin-cash-bch-logo.svg' },
 ];
@@ -11,7 +12,7 @@ const FEATURES = [
   { icon: <Zap size={24} />, title: 'Instant Swaps', desc: 'Intent-based architecture delivers immediate fills via automated relayers.' },
   { icon: <Shield size={24} />, title: 'Self-Custodial', desc: 'Your keys, your crypto. WDK wallets run entirely in your browser.' },
   { icon: <Clock size={24} />, title: 'Atomic Settlement', desc: 'HTLC hash-locks guarantee both sides settle — or both refund.' },
-  { icon: <Layers size={24} />, title: 'Multi-Chain', desc: 'One seed phrase gives you wallets on Solana, BSC, and Bitcoin Cash.' },
+  { icon: <Layers size={24} />, title: 'Multi-Chain', desc: 'One seed phrase gives you wallets on Solana, Ethereum, BSC, and Bitcoin Cash.' },
 ];
 
 export default function LandingPage() {
@@ -38,7 +39,7 @@ export default function LandingPage() {
         </h1>
 
         <p style={{ fontSize: 18, color: 'var(--color-text-secondary)', maxWidth: 500, margin: '0 auto 36px', lineHeight: 1.6 }}>
-          Swap tokens across Solana, BNB Chain, and Bitcoin Cash in seconds.
+          Swap tokens across Solana, Ethereum, BNB Chain, and Bitcoin Cash in seconds.
           No bridges. No wrapping. Fully trustless.
         </p>
 
