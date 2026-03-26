@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Zap, Shield, Clock, ArrowRight, Layers } from 'lucide-react';
+import { Zap, Shield, Clock, ArrowRight, Layers, ChevronDown, ExternalLink, BookOpen } from 'lucide-react';
 
 const CHAINS = [
   { name: 'Solana', color: '#9945FF', icon: '/logos/solana.svg' },
@@ -14,6 +15,62 @@ const FEATURES = [
   { icon: <Clock size={24} />, title: 'Atomic Settlement', desc: 'HTLC hash-locks guarantee both sides settle — or both refund.' },
   { icon: <Layers size={24} />, title: 'Multi-Chain', desc: 'One seed phrase gives you wallets on Solana, Ethereum, BSC, and Bitcoin Cash.' },
 ];
+
+const FAQS = [
+  {
+    q: 'What is IntentDEX?',
+    a: 'IntentDEX is a fully decentralized cross-chain exchange powered by Tether WDK. Instead of routing through liquidity pools and bridges, you simply declare your swap intent and our solver network fills it atomically using HTLC hash-locks.',
+  },
+  {
+    q: 'Which chains are supported?',
+    a: 'We currently support Solana, Ethereum (Sepolia), and BNB Chain (Testnet) with live atomic swaps. Bitcoin Cash integration is actively in development. Any chain supporting SHA-256 hashing can join the protocol.',
+  },
+  {
+    q: 'How are swaps secured?',
+    a: 'Every swap uses Hash Time-Locked Contracts (HTLCs). A cryptographic secret links escrows on both chains — either both sides settle, or both refund automatically after the timelock expires. No trusted third party is ever involved.',
+  },
+  {
+    q: 'Do I need MetaMask or Phantom?',
+    a: 'No! IntentDEX uses the Tether Wallet Development Kit (WDK) to generate wallets directly in your browser from a single seed phrase. One wallet works across all supported chains — no extensions needed.',
+  },
+  {
+    q: 'Which tokens does IntentDEX support?',
+    a: 'IntentDEX natively supports all three Tether WDK tokens: USDt (Tether stablecoin), USD₮0 (omnichain Tether with native bridging), and XAUT (Tether Gold). Additionally, native assets like SOL, ETH, and BNB are supported via the Velora swap module.',
+  },
+  {
+    q: 'Can AI agents use IntentDEX?',
+    a: 'Yes! IntentDEX ships with a native Model Context Protocol (MCP) server that allows AI agents like Claude to autonomously create and execute cross-chain swaps using natural language commands — no human UI interaction required.',
+  },
+];
+
+function FaqItem({ q, a }: { q: string; a: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      className="glass-card"
+      style={{ padding: '20px 24px', cursor: 'pointer', transition: 'all 0.2s ease' }}
+      onClick={() => setOpen(!open)}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+        <h4 style={{ fontWeight: 700, fontSize: 15, margin: 0 }}>{q}</h4>
+        <ChevronDown
+          size={18}
+          style={{
+            flexShrink: 0,
+            color: 'var(--color-primary)',
+            transition: 'transform 0.2s ease',
+            transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
+          }}
+        />
+      </div>
+      {open && (
+        <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.6, marginTop: 12, marginBottom: 0 }}>
+          {a}
+        </p>
+      )}
+    </div>
+  );
+}
 
 export default function LandingPage() {
   return (
@@ -93,6 +150,66 @@ export default function LandingPage() {
           ))}
         </div>
       </section>
+
+      {/* FAQ */}
+      <section style={{ marginBottom: 80 }}>
+        <h2 style={{ fontSize: 28, fontWeight: 800, marginBottom: 32, fontFamily: 'var(--font-heading)', textAlign: 'center' }}>
+          Frequently <span className="gradient-text">Asked</span>
+        </h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 700, margin: '0 auto' }}>
+          {FAQS.map(faq => (
+            <FaqItem key={faq.q} q={faq.q} a={faq.a} />
+          ))}
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer style={{
+        borderTop: '1px solid rgba(255,255,255,0.06)',
+        padding: '40px 0',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 20,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontWeight: 800, fontSize: 18, fontFamily: 'var(--font-heading)' }}>
+            <span className="gradient-text">Intent</span>DEX
+          </span>
+          <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>© 2026</span>
+        </div>
+        <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
+          <a
+            href="https://x.com/intentdex"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              color: 'var(--color-text-secondary)', textDecoration: 'none',
+              fontSize: 14, fontWeight: 600, transition: 'color 0.2s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-primary-light)')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'var(--color-text-secondary)')}
+          >
+            <ExternalLink size={14} /> @intentdex
+          </a>
+          <a
+            href="https://intentdex.gitbook.io/intentdex-docs"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              color: 'var(--color-text-secondary)', textDecoration: 'none',
+              fontSize: 14, fontWeight: 600, transition: 'color 0.2s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-primary-light)')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'var(--color-text-secondary)')}
+          >
+            <BookOpen size={14} /> Docs
+          </a>
+        </div>
+      </footer>
     </div>
   );
 }
